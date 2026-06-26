@@ -1,0 +1,57 @@
+name: Generate World Cup Scenarios
+
+on:
+  schedule:
+    # Run every 6 hours to recalculate based on latest group-stage results
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "mock_data.py"
+      - "group_stage.py"
+      - "bracket_mapper.py"
+      - "simulation.py"
+      - "export_scenarios.py"
+      - ".github/workflows/generate-scenarios.yml"
+
+jobs:
+  generate-scenarios:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Generate scenarios.json
+        run: |
+          python export_scenarios.py --simulations 5000
+
+      - name: Checkout worldcup-app
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.WORLDCUP_APP_REPO }}
+          path: worldcup-app
+          token: ${{ secrets.WORLDCUP_APP_TOKEN }}
+
+      - name: Copy scenarios to worldcup-app
+        run: |
+          mkdir -p worldcup-app/packages/data/data/scenarios
+          cp scenarios.json worldcup-app/packages/data/data/scenarios/latest.json
+
+      - name: Create pull request in worldcup-app
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.WORLDCUP_APP_TOKEN }}
+          path: worldcup-app
+          commit-message: "chore: regenerate world cup scenarios [automated]"
+          title: "Regenerate World Cup bracket scenarios"
+          body: |
+            Automated regeneration of `scenarios/latest.json` from `worldcup-sim`.
+
+            Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: "chore/scenarios-update"
+          delete-branch: true
